@@ -1,5 +1,3 @@
-local inspect = require("./inspect")
-
 local function split(inputstr, sep)
 	sep = sep or "%s"
 	local t = {}
@@ -31,6 +29,8 @@ end
 ---@class ldoc_structure
 ---@field functions ldoc_function_structure[]
 ---@field name string
+---@field alias string
+---@field parent string
 ---@field submodules table<name, boolean>
 ---@field fields table
 
@@ -45,9 +45,25 @@ end
 
 ---@class ldoc_return_structure [1] - type, [2] - desc
 
+
+local function split_tag_string(tag_string)
+	local splitted = split(tag_string, " ")
+
+	if #splitted > 1 then
+		local name = splitted[1]
+		table.remove(splitted, 1)
+		return name, table.concat(splitted, " ")
+	end
+
+	return tag_string, ""
+end
+
+
 local function parse_module(parsed_data, module_data)
 	local class = {}
-	class.name = module_data.mod_name
+	class.name = module_data.name
+	class.alias  = module_data.tags and module_data.tags.alias or class.name
+	class.parent = module_data.tags and module_data.tags.within or nil
 	class.submodules = {}
 	class.functions = {}
 	class.fields = {}
@@ -65,6 +81,7 @@ local function parse_module(parsed_data, module_data)
 			local fun_args_string = ""
 			local args = {}
 			local return_values = {}
+
 			for i = 1, #v.params do
 				local param_name = v.params[i]
 				local param_type = v.modifiers.param[i] and v.modifiers.param[i].type or "unknown"
@@ -96,10 +113,14 @@ local function parse_module(parsed_data, module_data)
 		end
 
 		if v.type == "field" then
+			local field_type = v.type
+			if v.modifiers and v.modifiers.field[v.name] then
+				field_type = v.modifiers.field[v.name].type
+			end
 			table.insert(class.fields, {
 				name = v.name,
 				desc = v.summary,
-				type = v.type
+				type = field_type
 			})
 		end
 
@@ -126,6 +147,20 @@ local function parse_module(parsed_data, module_data)
 					type = "field[]"
 				})
 			end
+		end
+	end
+
+	-- Tags is details that cannot be derived from the source code automatically.
+	if module_data.tags and module_data.tags.field then
+		for i = 1, #module_data.tags.field do
+			local tag_string = module_data.tags.field[i]
+			local tag_name, tag_desc = split_tag_string(tag_string)
+			local tag_type = module_data.modifiers.field[i].type or ""
+			table.insert(class.fields, {
+				name = tag_name,
+				desc = tag_desc,
+				type = tag_type
+			})
 		end
 	end
 
@@ -236,6 +271,8 @@ end
 
 ---@class prepared_structure
 ---@field modules table<string, prepared_module_structure>
+---@field aliases table<string, string>
+---@field parents table<string, string>
 
 ---@class prepared_module_structure
 ---@field functions prepared_function_structure[]
@@ -274,10 +311,15 @@ end
 local function prepare_data(parsed_data)
 	---@type prepared_structure
 	local prepared = {
-		modules = {}
+		modules = {},
+		aliases = {},
+		parents = {}
 	}
 
 	for class_name, data in pairs(parsed_data) do
+		prepared.aliases[data.name] = data.alias or data.name
+		prepared.parents[class_name] = data.parent
+
 		for _, function_data in pairs(data.functions) do
 			---@type prepared_function_structure
 			local function_info = {}
@@ -301,7 +343,8 @@ local function prepare_data(parsed_data)
 
 			-- Make table type
 			if field_data.values then
-				local module_name = class_name .. "." .. field_data.name
+				local alias_name = prepared.aliases[class_name] or class_name
+				local module_name = alias_name .. "." .. field_data.name
 				field_info.name = field_data.name
 				field_info.desc = field_data.desc
 				field_info.type = module_name
@@ -332,65 +375,62 @@ local function prepare_data(parsed_data)
 end
 
 
-local function get_sorted_keys(data)
-	local result = {}
-	for key in pairs(data) do
-		table.insert(result, key)
-	end
-	table.sort(result)
-	return result
-end
-
-
 ---@param data prepared_structure
 local function make_annotations(data)
 	local result = ""
 
-	local keys = get_sorted_keys(data.modules)
+	local keys = {}
+	for key in pairs(data.modules) do
+		table.insert(keys, key)
+	end
+	table.sort(keys, function(a, b)
+		return (data.aliases[a] or a) < (data.aliases[b] or b)
+	end)
+
 	for i = 1, #keys do
+		local module_alias = data.aliases[keys[i]] or keys[i]
 		local module_name = keys[i]
 		local class_structure = data.modules[module_name]
-		result = result .. "---@class " .. module_name .. "\n"
-		for i = 1, #class_structure.fields do
-			-- TODO: fill fields
-			local field = class_structure.fields[i]
+		local class_string = "---@class " .. module_alias
+		--- Class title
+		if data.parents[module_name] then
+			local parent = data.parents[module_name]
+			local parent_name = data.aliases[parent] or parent
+			class_string = class_string .. " : " .. parent_name
+		end
+		result = result .. class_string .. "\n"
+
+		--- Class fields
+		for j = 1, #class_structure.fields do
+			local field = class_structure.fields[j]
 			local field_string = string.format("---@field %s %s %s", field.name, field.type, field.desc or "")
 			result = result .. trim(field_string) .. "\n"
 		end
 
+		--- Class functions
 		for _, function_info in pairs(class_structure.functions) do
 			local args_string = ""
-			for i = 1, #function_info.args do
-				local arg = function_info.args[i]
-				local arg_string = string.format("%s:%s", arg.name, arg.type)
+			for j = 1, #function_info.args do
+				local arg = function_info.args[j]
+				local arg_type = data.aliases[arg.type] or arg.type
+				local arg_string = string.format("%s:%s", arg.name, arg_type)
 				args_string = args_string .. arg_string
 
-				if i < #function_info.args then
+				if j < #function_info.args then
 					args_string = args_string .. ", "
 				end
 			end
 
 			local return_string = #function_info.return_value > 0 and ":" or ""
-			for i = 1, #function_info.return_value do
-				local arg = function_info.return_value[i]
-				return_string = return_string .. arg.type
+			for j = 1, #function_info.return_value do
+				local arg = function_info.return_value[j]
+				local arg_type = data.aliases[arg.type] or arg.type
+				return_string = return_string .. arg_type
 
-				if i < #function_info.return_value then
+				if j < #function_info.return_value then
 					return_string = return_string .. ", "
 				end
 			end
-
-			local default_values = nil
-			for i = 1, #function_info.args do
-				local arg = function_info.args[i]
-				if arg.default then
-					default_values = default_values or " Default values:"
-					default_values = default_values .. string.format(" <%s: %s>", arg.name, arg.default)
-				end
-
-			end
-			default_values = default_values or ""
-			-- Default values now is unused
 
 			local field_string = string.format("---@field %s fun(%s)%s %s", function_info.name, args_string, return_string, function_info.desc)
 			result = result .. field_string .. "\n"
