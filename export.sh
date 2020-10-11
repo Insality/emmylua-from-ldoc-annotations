@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 ## Generate emmylua annotations from ldoc project
 ## Usage: export.sh /path/to/folder/with/config.ld
@@ -21,11 +21,15 @@ set -e
 
 dump_file="./_temporary_ldoc.dump"
 output_file="./annotations.lua"
+original_path=$(pwd)
 
 clean() {
-    rm -f ${dump_file}
+	rm -f ${dump_file}
+	cd $original_path
 }
 
+script_path="`dirname \"$0\"`"
+cd $script_path
 
 ### Generate dump file
 echo "Make ldoc dump from $1"
@@ -37,5 +41,5 @@ cd $cwd
 
 ### Generate annotations
 echo "Generate annotations from ldoc to $output_file"
-lua main.lua ./test.dump > $output_file
+lua ./main.lua $dump_file > $output_file
 
