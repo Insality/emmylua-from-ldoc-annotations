@@ -24,5 +24,5 @@ cd $cwd
 
 ### Generate annotations
 echo "Generate annotations from ldoc to annotations.lua"
-lua main.lua ./test.dump > annotation.lua
+lua main.lua ./test.dump > annotations.lua
 

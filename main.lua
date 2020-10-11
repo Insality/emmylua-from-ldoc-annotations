@@ -1,3 +1,5 @@
+local inspect = require("./inspect")
+
 local function split(inputstr, sep)
 	sep = sep or "%s"
 	local t = {}
@@ -30,6 +32,7 @@ end
 ---@field functions ldoc_function_structure[]
 ---@field name string
 ---@field submodules table<name, boolean>
+---@field fields table
 
 ---@class ldoc_function_structure
 ---@field args ldoc_args_structure[]
@@ -47,6 +50,7 @@ local function parse_module(parsed_data, module_data)
 	class.name = module_data.mod_name
 	class.submodules = {}
 	class.functions = {}
+	class.fields = {}
 
 	for k, v in pairs(module_data.items) do
 		if v.type == "function" then
@@ -65,13 +69,15 @@ local function parse_module(parsed_data, module_data)
 				local param_name = v.params[i]
 				local param_type = v.modifiers.param[i] and v.modifiers.param[i].type or "unknown"
 				local param_desc = replace_new_line(v.params.map[param_name])
+				local default_value = v.modifiers.param[i] and v.modifiers.param[i].opt or nil
+
 
 				fun_args_string = fun_args_string .. param_name
 				if i ~= #v.params then
 					fun_args_string = fun_args_string .. ", "
 				end
 
-				table.insert(args, { param_name, param_type, param_desc })
+				table.insert(args, { param_name, param_type, param_desc, default_value })
 			end
 			if v.ret then
 				for i = 1, #v.ret do
@@ -87,8 +93,39 @@ local function parse_module(parsed_data, module_data)
 				args_string = fun_args_string,
 				return_values = return_values
 			})
-		else
-			-- print("OTHER TYPE")
+		end
+
+		if v.type == "field" then
+			table.insert(class.fields, {
+				name = v.name,
+				desc = v.summary,
+				type = v.type
+			})
+		end
+
+		if v.type == "table" then
+			local values = {}
+			local map_params = {}
+			for key, value in pairs(v.params.map) do
+				values[key] = value
+				table.insert(map_params, value)
+			end
+			if #map_params == #v.params then
+				--- Assume it's map
+				table.insert(class.fields, {
+					name = v.name,
+					desc = v.summary,
+					type = "table",
+					values = values
+				})
+			else
+				--- Assume it's simple array
+				table.insert(class.fields, {
+					name = v.name,
+					desc = v.summary,
+					type = "field[]"
+				})
+			end
 		end
 	end
 
@@ -130,11 +167,14 @@ local function check_module(prepared_data, module_name)
 			fields = {}
 		}
 	end
+end
 
+
+local function link_module_upside(prepared_data, module_name)
 	local upper_module = get_module_name(module_name, module_name)
-
 	if upper_module ~= module_name then
 		check_module(prepared_data, upper_module)
+		link_module_upside(prepared_data, upper_module)
 
 		local field_name = get_function_name(module_name)
 
@@ -169,6 +209,7 @@ local function parse_args(args)
 		info.name = args[i][1]
 		info.type = args[i][2]
 		info.desc = replace_new_line(trim(args[i][3]))
+		info.default = args[i][4]
 		table.insert(parsed, info)
 	end
 
@@ -210,6 +251,22 @@ end
 ---@field name string
 ---@field type string
 ---@field desc string
+---@field default string
+
+
+---@param prepared prepared_structure
+local function make_table_module(prepared, module_name, values)
+	check_module(prepared, module_name)
+	local fields = prepared.modules[module_name].fields
+	for k, v in pairs(values) do
+		---@type prepared_field_info
+		local field = {}
+		field.name = k
+		field.type = "field"
+		field.desc = v
+		table.insert(fields, field)
+	end
+end
 
 
 ---@param parsed_data table<string, ldoc_structure>
@@ -221,13 +278,14 @@ local function prepare_data(parsed_data)
 	}
 
 	for class_name, data in pairs(parsed_data) do
-		for index, function_data in pairs(data.functions) do
+		for _, function_data in pairs(data.functions) do
 			---@type prepared_function_structure
 			local function_info = {}
 
 			local module_name = get_module_name(function_data.name, class_name)
 			local function_name = get_function_name(function_data.name)
 			check_module(prepared, module_name)
+			link_module_upside(prepared, module_name)
 
 			function_info.name = function_name
 			function_info.desc = trim(replace_new_line(function_data.desc))
@@ -236,9 +294,51 @@ local function prepare_data(parsed_data)
 
 			table.insert(prepared.modules[module_name].functions, function_info)
 		end
+
+		for _, field_data in pairs(data.fields) do
+			---@type prepared_field_info
+			local field_info = {}
+
+			-- Make table type
+			if field_data.values then
+				local module_name = class_name .. "." .. field_data.name
+				field_info.name = field_data.name
+				field_info.desc = field_data.desc
+				field_info.type = module_name
+
+				make_table_module(prepared, module_name, field_data.values)
+				table.insert(prepared.modules[class_name].fields, field_info)
+			else
+				field_info.name = field_data.name
+				field_info.desc = field_data.desc
+				field_info.type = field_data.type
+
+				check_module(prepared, class_name)
+				table.insert(prepared.modules[class_name].fields, field_info)
+			end
+		end
+	end
+
+	for _, data in pairs(prepared.modules) do
+		table.sort(data.fields, function(a, b)
+			return a.name < b.name
+		end)
+		table.sort(data.functions, function(a, b)
+			return a.name < b.name
+		end)
 	end
 
 	return prepared
+end
+
+
+local function get_sorted_keys(data)
+	local result = {}
+	for key in pairs(data) do
+		table.insert(result, key)
+	end
+	table.sort(result)
+	return result
 end
 
 
@@ -246,13 +346,16 @@ end
 local function make_annotations(data)
 	local result = ""
 
-	for class_name, class_structure in pairs(data.modules) do
-		result = result .. "---@class " .. class_name .. "\n"
+	local keys = get_sorted_keys(data.modules)
+	for i = 1, #keys do
+		local module_name = keys[i]
+		local class_structure = data.modules[module_name]
+		result = result .. "---@class " .. module_name .. "\n"
 		for i = 1, #class_structure.fields do
 			-- TODO: fill fields
 			local field = class_structure.fields[i]
-			local field_string = string.format("---@field %s %s %s", field.name, field.type, field.desc)
-			result = result .. field_string .. "\n"
+			local field_string = string.format("---@field %s %s %s", field.name, field.type, field.desc or "")
+			result = result .. trim(field_string) .. "\n"
 		end
 
 		for _, function_info in pairs(class_structure.functions) do
@@ -277,6 +380,18 @@ local function make_annotations(data)
 				end
 			end
 
+			local default_values = nil
+			for i = 1, #function_info.args do
+				local arg = function_info.args[i]
+				if arg.default then
+					default_values = default_values or " Default values:"
+					default_values = default_values .. string.format(" <%s: %s>", arg.name, arg.default)
+				end
+
+			end
+			default_values = default_values or ""
+			-- Default values now is unused
+
 			local field_string = string.format("---@field %s fun(%s)%s %s", function_info.name, args_string, return_string, function_info.desc)
 			result = result .. field_string .. "\n"
 		end
@@ -295,6 +410,7 @@ local function main()
 		parse_module(parsed_data, ldoc_module)
 	end
 
+	-- print(inspect(parsed_data))
 	local prepared_data = prepare_data(parsed_data) -- Transform ldoc parsed data to our structure
 	local annotations = make_annotations(prepared_data) -- Output our structure to string
 	print(annotations)
