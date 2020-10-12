@@ -61,7 +61,7 @@ end
 
 local function parse_module(parsed_data, module_data)
 	local class = {}
-	class.name = module_data.name
+	class.name = module_data.mod_name
 	class.alias  = module_data.tags and module_data.tags.alias or class.name
 	class.parent = module_data.tags and module_data.tags.within or nil
 	class.submodules = {}
@@ -85,7 +85,7 @@ local function parse_module(parsed_data, module_data)
 			for i = 1, #v.params do
 				local param_name = v.params[i]
 				local param_type = v.modifiers.param[i] and v.modifiers.param[i].type or "unknown"
-				local param_desc = replace_new_line(v.params.map[param_name])
+				local param_desc = trim(replace_new_line(v.params.map[param_name]))
 				local default_value = v.modifiers.param[i] and v.modifiers.param[i].opt or nil
 
 
@@ -99,7 +99,7 @@ local function parse_module(parsed_data, module_data)
 			if v.ret then
 				for i = 1, #v.ret do
 					local ret_type = v.modifiers["return"][i].type or ""
-					local ret_desc = replace_new_line(v.ret[i] or "")
+					local ret_desc = trim(replace_new_line(v.ret[i] or ""))
 					table.insert(return_values, { ret_type, ret_desc })
 				end
 			end
@@ -377,7 +377,7 @@ end
 
 ---@param data prepared_structure
 local function make_annotations(data)
-	local result = ""
+	local result = "-- luacheck: ignore\n\n"
 
 	local keys = {}
 	for key in pairs(data.modules) do
@@ -391,7 +391,7 @@ local function make_annotations(data)
 		local module_alias = data.aliases[keys[i]] or keys[i]
 		local module_name = keys[i]
 		local class_structure = data.modules[module_name]
-		local class_string = "---@class " .. module_alias
+		local class_string = "\n---@class " .. module_alias
 		--- Class title
 		if data.parents[module_name] then
 			local parent = data.parents[module_name]
@@ -407,33 +407,41 @@ local function make_annotations(data)
 			result = result .. trim(field_string) .. "\n"
 		end
 
+		--- Add local module variable
+		local underscored = table.concat(split(module_alias, "."), "__")
+		result = result .. "local " .. underscored .. " = {}\n"
+
 		--- Class functions
 		for _, function_info in pairs(class_structure.functions) do
-			local args_string = ""
+			result = result .. "\n"
+			local function_args = ""
+			if function_info.desc then
+				result = result .. "--- " .. function_info.desc .. "\n"
+			end
 			for j = 1, #function_info.args do
 				local arg = function_info.args[j]
 				local arg_type = data.aliases[arg.type] or arg.type
-				local arg_string = string.format("%s:%s", arg.name, arg_type)
-				args_string = args_string .. arg_string
+				function_args = function_args .. arg.name
 
 				if j < #function_info.args then
-					args_string = args_string .. ", "
+					function_args = function_args  .. ", "
 				end
+
+				local param_string = string.format("---@param %s %s %s", arg.name, arg_type, trim(arg.desc))
+				result = result .. trim(param_string) .. "\n"
 			end
 
-			local return_string = #function_info.return_value > 0 and ":" or ""
 			for j = 1, #function_info.return_value do
 				local arg = function_info.return_value[j]
 				local arg_type = data.aliases[arg.type] or arg.type
-				return_string = return_string .. arg_type
 
-				if j < #function_info.return_value then
-					return_string = return_string .. ", "
-				end
+				local return_string = string.format("---@return %s %s", arg_type, trim(arg.desc))
+				result = result .. trim(return_string) .. "\n"
 			end
 
-			local field_string = string.format("---@field %s fun(%s)%s %s", function_info.name, args_string, return_string, function_info.desc)
-			result = result .. field_string .. "\n"
+			local function_name = underscored .. "." .. function_info.name
+			local function_string = string.format("function %s(%s) end", function_name, function_args)
+			result = result .. function_string .. "\n"
 		end
 
 		result = result .. "\n"
