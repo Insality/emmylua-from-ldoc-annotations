@@ -24,7 +24,7 @@ output_file="./annotations.lua"
 original_path=$(pwd)
 
 clean() {
-	rm -f ${dump_file}
+	# rm -f ${dump_file}
 	cd $original_path
 }
 
@@ -36,7 +36,7 @@ echo "Make ldoc dump from $1"
 echo "return" > $dump_file
 cwd=$(pwd)
 cd $1
-dump_result="$(ldoc . --filter pl.pretty.dump >> ${cwd}/$dump_file)"
+dump_result="$(ldoc . --filter pl.pretty.dump --all >> ${cwd}/$dump_file)"
 cd $cwd
 
 ### Generate annotations
