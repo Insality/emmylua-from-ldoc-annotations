@@ -13,9 +13,11 @@ local utils = require("./src/utils")
 
 ---@class prepared_function_structure
 ---@field name string
+---@field summary string
 ---@field desc string
 ---@field args prepared_field_info[]
 ---@field return_value prepared_field_info[]
+---@field is_protected boolean
 
 ---@class prepared_field_info
 ---@field name string
@@ -162,9 +164,11 @@ function M.prepare(parsed_data)
 			link_module_upside(prepared, module_name)
 
 			function_info.name = function_name
+			function_info.summary = utils.trim(utils.replace_new_line(function_data.summary))
 			function_info.desc = utils.trim(utils.replace_new_line(function_data.desc))
 			function_info.args = parse_args(function_data.args)
 			function_info.return_value = parse_return_values(function_data.return_values)
+			function_info.is_protected = string.find(function_info.summary, "(protected)")
 
 			table.insert(prepared.modules[module_name].functions, function_info)
 		end

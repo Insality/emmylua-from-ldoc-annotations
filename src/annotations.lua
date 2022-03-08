@@ -54,8 +54,14 @@ function M.generate(data)
 		for _, function_info in pairs(class_structure.functions) do
 			result = result .. "\n"
 			local function_args = ""
-			if function_info.desc then
+			if function_info.summary and #function_info.summary > 0 then
+				result = result .. "--- " .. function_info.summary .. "\n"
+			end
+			if function_info.desc and #function_info.desc > 0 then
 				result = result .. "--- " .. function_info.desc .. "\n"
+			end
+			if function_info.is_protected then
+				result = result .. "---@protected\n"
 			end
 			for j = 1, #function_info.args do
 				local arg = function_info.args[j]

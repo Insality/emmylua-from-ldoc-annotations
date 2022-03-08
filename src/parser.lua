@@ -56,7 +56,8 @@ local function parse(parsed_data, module_data)
 				class.submodules[paths[2]] = true
 			end
 
-			local fun_desc = v.summary
+			local fun_summary = v.summary
+			local fun_desc = v.description
 			local fun_args_string = ""
 			local args = {}
 			local return_values = {}
@@ -84,6 +85,7 @@ local function parse(parsed_data, module_data)
 			end
 			table.insert(class.functions, {
 				name = fun_name,
+				summary = fun_summary,
 				desc = fun_desc,
 				args = args,
 				args_string = fun_args_string,
