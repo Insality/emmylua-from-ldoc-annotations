@@ -32,7 +32,17 @@ function M.generate(data)
 		--- Class fields
 		for j = 1, #class_structure.fields do
 			local field = class_structure.fields[j]
-			local field_string = string.format("---@field %s %s %s", field.name, field.type, field.desc or "")
+			local field_types = utils.split(field.type, "|")
+			local field_type = ""
+			for index = 1, #field_types do
+				local ftype = field_types[index]
+				field_type = field_type .. (data.aliases[ftype] or ftype)
+				if index < #field_types then
+					field_type = field_type .. "|"
+				end
+			end
+
+			local field_string = string.format("---@field %s %s %s", field.name, field_type, field.desc or "")
 			result = result .. utils.trim(field_string) .. "\n"
 		end
 
@@ -49,9 +59,17 @@ function M.generate(data)
 			end
 			for j = 1, #function_info.args do
 				local arg = function_info.args[j]
-				local arg_type = data.aliases[arg.type] or arg.type
-				function_args = function_args .. arg.name
+				local arg_types = utils.split(arg.type, "|")
+				local arg_type = ""
+				for index = 1, #arg_types do
+					local atype = arg_types[index]
+					arg_type = arg_type .. (data.aliases[atype] or atype)
+					if index < #arg_types then
+						arg_type = arg_type .. "|"
+					end
+				end
 
+				function_args = function_args .. arg.name
 				if j < #function_info.args then
 					function_args = function_args  .. ", "
 				end
