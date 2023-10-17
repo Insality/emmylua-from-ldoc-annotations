@@ -47,7 +47,8 @@ function M.generate(data)
 				end
 			end
 
-			local field_string = string.format("---@field %s %s %s", field.name, field_type, field.desc or "")
+			local desc = utils.trim(field.desc)
+			local field_string = string.format("---@field %s %s %s", field.name, field_type, desc or "")
 			result = result .. utils.trim(field_string) .. "\n"
 		end
 

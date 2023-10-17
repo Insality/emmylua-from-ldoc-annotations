@@ -133,8 +133,9 @@ local function make_table_module(prepared, module_name, values)
 		---@type prepared_field_info
 		local field = {}
 		field.name = k
-		field.type = "field"
-		field.desc = v
+		field.type = v.type
+		field.desc = v.desc
+		field.default = v.default
 		table.insert(fields, field)
 	end
 end

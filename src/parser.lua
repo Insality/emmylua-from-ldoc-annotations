@@ -68,7 +68,6 @@ local function parse(parsed_data, module_data)
 				local param_desc = utils.trim(utils.replace_new_line(v.params.map[param_name]))
 				local default_value = v.modifiers.param[i] and v.modifiers.param[i].opt or nil
 
-
 				fun_args_string = fun_args_string .. param_name
 				if i ~= #v.params then
 					fun_args_string = fun_args_string .. ", "
@@ -109,7 +108,19 @@ local function parse(parsed_data, module_data)
 			local values = {}
 			local map_params = {}
 			for key, value in pairs(v.params.map) do
-				values[key] = value
+				local field_type = "field"
+				local field_default = nil
+
+				if v.modifiers.field[key] then
+					field_type = v.modifiers.field[key].type
+					field_default = v.modifiers.field[key].opt
+				end
+
+				values[key] = {
+					desc = value,
+					type = field_type,
+					default = field_default,
+				}
 				table.insert(map_params, value)
 			end
 			if #map_params == #v.params then
