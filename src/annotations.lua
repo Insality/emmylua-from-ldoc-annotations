@@ -6,7 +6,12 @@ local M = {}
 
 ---@param data prepared_structure
 function M.generate(data)
-	local result = "-- luacheck: ignore\n\n"
+	local result = [[-- luacheck: ignore
+---@diagnostic disable: lowercase-global
+---@diagnostic disable: missing-return
+---@diagnostic disable: duplicate-doc-param
+---@diagnostic disable: duplicate-set-field
+]]
 
 	local keys = {}
 	for key in pairs(data.modules) do
