@@ -91,7 +91,16 @@ function M.generate(data)
 
 			for j = 1, #function_info.return_value do
 				local arg = function_info.return_value[j]
-				local arg_type = data.aliases[arg.type] or arg.type
+
+				local arg_types = utils.split(arg.type, "|")
+				local arg_type = ""
+				for index = 1, #arg_types do
+					local atype = arg_types[index]
+					arg_type = arg_type .. (data.aliases[atype] or atype)
+					if index < #arg_types then
+						arg_type = arg_type .. "|"
+					end
+				end
 
 				local return_string = string.format("---@return %s %s", arg_type, utils.trim(arg.desc))
 				result = result .. utils.trim(return_string) .. "\n"
