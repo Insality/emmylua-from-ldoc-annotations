@@ -153,6 +153,7 @@ function M.prepare(parsed_data)
 
 	for class_name, data in pairs(parsed_data) do
 		prepared.aliases[data.name] = data.alias or data.name
+		prepared.aliases[data.name .. "[]"] = (data.alias or data.name) .. "[]"
 		prepared.parents[class_name] = data.parent
 
 		for _, function_data in pairs(data.functions) do

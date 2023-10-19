@@ -7,10 +7,7 @@ local M = {}
 ---@param data prepared_structure
 function M.generate(data)
 	local result = [[-- luacheck: ignore
----@diagnostic disable: lowercase-global
----@diagnostic disable: missing-return
----@diagnostic disable: duplicate-doc-param
----@diagnostic disable: duplicate-set-field
+---@meta
 ]]
 
 	local keys = {}
